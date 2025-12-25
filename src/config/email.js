@@ -1,17 +1,17 @@
 const nodemailer = require('nodemailer'); 
  
-// Brevo SMTP Transporter 
+// Brevo SMTP Transporter with SSL (Port 465)
 const transporter = nodemailer.createTransport({ 
   host: process.env.SMTP_HOST, // smtp-relay.brevo.com 
-  port: Number(process.env.SMTP_PORT) || 587, 
-  secure: false, // MUST be false for 587 (STARTTLS) 
+  port: Number(process.env.SMTP_PORT) || 465, // Changed to 465
+  secure: true, // MUST be true for 465 (SSL)
   auth: { 
     user: process.env.SMTP_USER, // 9ec54d001@smtp-brevo.com 
     pass: process.env.SMTP_PASS, // Your SMTP key 
-  }, 
-  tls: { 
-    rejectUnauthorized: false, // avoids Render TLS edge cases 
-  }, 
+  },
+  connectionTimeout: 10000, // 10 seconds
+  greetingTimeout: 10000,
+  socketTimeout: 10000,
 }); 
  
 // Verify SMTP connection on startup 
@@ -31,7 +31,7 @@ const sendInvitationEmail = async (toEmail, inviterName, teamName, tempPassword)
   const loginUrl = process.env.FRONTEND_URL || 'http://localhost:5173'; 
  
   const mailOptions = { 
-    from: process.env.SMTP_FROM, // MUST be verified in Brevo (e.g., avisn751@gmail.com) 
+    from: process.env.SMTP_FROM, // MUST be verified in Brevo
     to: toEmail, 
     subject: `You're invited to join ${teamName} on TeamCollab`, 
     html: ` 
