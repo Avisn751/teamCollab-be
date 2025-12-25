@@ -1,40 +1,21 @@
-const nodemailer = require('nodemailer'); 
- 
-// Brevo SMTP Transporter with SSL (Port 465)
-const transporter = nodemailer.createTransport({ 
-  host: process.env.SMTP_HOST, // smtp-relay.brevo.com 
-  port: Number(process.env.SMTP_PORT) || 465, // Changed to 465
-  secure: true, // MUST be true for 465 (SSL)
-  auth: { 
-    user: process.env.SMTP_USER, // 9ec54d001@smtp-brevo.com 
-    pass: process.env.SMTP_PASS, // Your SMTP key 
-  },
-  connectionTimeout: 10000, // 10 seconds
-  greetingTimeout: 10000,
-  socketTimeout: 10000,
-}); 
- 
-// Verify SMTP connection on startup 
-const verifyConnection = async () => { 
-  try { 
-    await transporter.verify(); 
-    console.log('✅ Brevo SMTP connected'); 
-    return true; 
-  } catch (error) { 
-    console.error('❌ Brevo SMTP failed:', error); 
-    return false; 
-  } 
-}; 
- 
-// Send invitation email 
+const axios = require('axios'); // npm install axios
+
+// Send invitation email via Brevo API
 const sendInvitationEmail = async (toEmail, inviterName, teamName, tempPassword) => { 
   const loginUrl = process.env.FRONTEND_URL || 'http://localhost:5173'; 
  
-  const mailOptions = { 
-    from: process.env.SMTP_FROM, // MUST be verified in Brevo
-    to: toEmail, 
-    subject: `You're invited to join ${teamName} on TeamCollab`, 
-    html: ` 
+  const emailData = {
+    sender: {
+      name: "TeamCollab",
+      email: process.env.SMTP_FROM // avisn751@gmail.com
+    },
+    to: [
+      {
+        email: toEmail
+      }
+    ],
+    subject: `You're invited to join ${teamName} on TeamCollab`,
+    htmlContent: ` 
       <div style="font-family:Arial,sans-serif;max-width:600px;margin:auto"> 
         <h2>🎉 You're Invited!</h2> 
         <p><strong>${inviterName}</strong> invited you to join <strong>${teamName}</strong>.</p> 
@@ -49,21 +30,47 @@ const sendInvitationEmail = async (toEmail, inviterName, teamName, tempPassword)
  
         <p style="color:#e74c3c"><b>Change your password after login.</b></p> 
       </div> 
-    `, 
-  }; 
- 
+    `
+  };
+
   try { 
-    const info = await transporter.sendMail(mailOptions); 
-    console.log('📧 Email sent:', info.messageId); 
-    return { success: true, messageId: info.messageId }; 
+    const response = await axios.post(
+      'https://api.brevo.com/v3/smtp/email',
+      emailData,
+      {
+        headers: {
+          'accept': 'application/json',
+          'api-key': process.env.BREVO_API_KEY,
+          'content-type': 'application/json'
+        }
+      }
+    );
+    
+    console.log('📧 Email sent via Brevo API:', response.data.messageId); 
+    return { success: true, messageId: response.data.messageId }; 
   } catch (error) { 
-    console.error('❌ Email error:', error); 
-    return { success: false, error: error.message }; 
+    console.error('❌ Email error:', error.response?.data || error.message); 
+    return { success: false, error: error.response?.data || error.message }; 
   } 
 }; 
- 
+
+// Verify API connection
+const verifyConnection = async () => {
+  try {
+    await axios.get('https://api.brevo.com/v3/account', {
+      headers: {
+        'api-key': process.env.BREVO_API_KEY
+      }
+    });
+    console.log('✅ Brevo API connected');
+    return true;
+  } catch (error) {
+    console.error('❌ Brevo API failed:', error.response?.data || error.message);
+    return false;
+  }
+};
+
 module.exports = { 
-  transporter, 
   verifyConnection, 
   sendInvitationEmail, 
 };
