@@ -8,6 +8,13 @@ const apiInstance = new SibApiV3Sdk.TransactionalEmailsApi();
 const sendInvitationEmail = async (toEmail, inviterName, teamName, tempPassword) => {
   const loginUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
 
+  // Ensure sender is defined
+  const senderEmail = process.env.SMTP_FROM;
+  if (!senderEmail) {
+    console.error("Error: SMTP_FROM environment variable is not set or verified in Brevo.");
+    return { success: false, error: "Sender email is missing or unverified." };
+  }
+
   const htmlContent = `
     <!DOCTYPE html>
     <html>
@@ -63,7 +70,7 @@ const sendInvitationEmail = async (toEmail, inviterName, teamName, tempPassword)
   `;
 
   const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail({
-    sender: { email: process.env.BREVO_FROM || 'noreply@yourdomain.com', name: 'TeamCollab' },
+    sender: { email: senderEmail, name: 'TeamCollab' },
     to: [{ email: toEmail }],
     subject: `You've been invited to join ${teamName} on TeamCollab`,
     htmlContent,
