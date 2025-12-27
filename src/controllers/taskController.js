@@ -23,7 +23,6 @@ const getTasks = async (req, res, next) => {
       query.projectId = { $in: projectIds };
     }
 
-    // If the requester is a MEMBER, only return tasks assigned to them
     if (req.user.role === 'MEMBER') {
       query.assignedTo = req.user._id;
     }
@@ -97,7 +96,6 @@ const createTask = async (req, res, next) => {
       io.to(teamId.toString()).emit('task:created', populatedTask);
     }
 
-    // Create notification and emit personal socket event if task is assigned
     if (assignedTo) {
       const notification = await createNotification(
         assignedTo,
@@ -109,7 +107,6 @@ const createTask = async (req, res, next) => {
       );
 
       if (io && notification) {
-        // emit to a personal room; frontend should join `user:<userId>` room on connect
         io.to(`user:${assignedTo}`).emit('notification:new', notification);
       }
     }
@@ -135,7 +132,6 @@ const updateTask = async (req, res, next) => {
       });
     }
 
-    // Track if assignment changed
     const previousAssignedTo = task.assignedTo?.toString();
     const newAssignedTo = assignedTo?.toString();
     const assignmentChanged = previousAssignedTo !== newAssignedTo;
@@ -158,7 +154,6 @@ const updateTask = async (req, res, next) => {
       io.to(teamId.toString()).emit('task:updated', populatedTask);
     }
 
-    // Create notification if assignment changed and emit personal socket event
     if (assignmentChanged && assignedTo) {
       const notification = await createNotification(
         assignedTo,
@@ -172,7 +167,6 @@ const updateTask = async (req, res, next) => {
         io.to(`user:${assignedTo}`).emit('notification:new', notification);
       }
     } else if (assignmentChanged && !assignedTo && previousAssignedTo) {
-      // Notify user if task was unassigned
       const notification = await createNotification(
         previousAssignedTo,
         'task_updated',
@@ -208,7 +202,6 @@ const deleteTask = async (req, res, next) => {
 
     const teamId = req.user.teamId?._id || req.user.teamId;
 
-    // Prevent MEMBERS from deleting tasks
     if (req.user.role === 'MEMBER') {
       return res.status(403).json({ success: false, message: 'Members are not allowed to delete tasks' });
     }

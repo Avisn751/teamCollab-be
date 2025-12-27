@@ -59,16 +59,15 @@ const register = async (req, res, next) => {
       adminId: null,
     });
 
-    // Generate verification token
     const verificationToken = generateVerificationToken();
-    const verificationTokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+    const verificationTokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
     user = new User({
       email,
       name,
       role: 'ADMIN',
       firebaseUid,
-      isActive: false, // Email verification required
+      isActive: false,
       verificationToken,
       verificationTokenExpiry,
     });
@@ -81,7 +80,6 @@ const register = async (req, res, next) => {
     user.teamId = team._id;
     await user.save();
 
-    // Send verification email
     const emailResult = await sendVerificationEmail(email, verificationToken);
     if (!emailResult.success) {
       console.error('Failed to send verification email:', emailResult.error);
@@ -117,13 +115,11 @@ const login = async (req, res, next) => {
 
     let user = await User.findOne({ email }).populate('teamId');
     
-    // Password-based login (for invited users with temp password)
     if (password && !firebaseUid) {
       if (!user) {
         return res.status(401).json({ success: false, message: 'Invalid email or password' });
       }
       
-      // Check if temp password has expired
       if (user.tempPasswordExpiry && new Date() > user.tempPasswordExpiry) {
         return res.status(401).json({ success: false, message: 'Temporary password has expired. Please contact admin.' });
       }
@@ -152,7 +148,6 @@ const login = async (req, res, next) => {
       });
     }
     
-    // Firebase-based login (existing logic)
     if (user) {
       if (firebaseUid && user.firebaseUid !== firebaseUid) {
         user.firebaseUid = firebaseUid;
@@ -180,7 +175,6 @@ const login = async (req, res, next) => {
       });
     }
     
-    // Create new user if not exists (existing logic)
     const team = new Team({
       name: `New Team`,
       description: 'Auto-created team',
@@ -273,7 +267,6 @@ const changePassword = async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
     
-    // Verify current password. Accept either the stored password (bcrypt) or a valid tempPassword.
     let isMatch = false;
 
     if (user.password) {
@@ -284,7 +277,6 @@ const changePassword = async (req, res, next) => {
       isMatch = await user.comparePassword(currentPassword);
     }
 
-    // If not matched against hashed password, allow matching the plaintext tempPassword (if present and not expired)
     if (!isMatch && user.tempPassword) {
       if (user.tempPasswordExpiry && new Date() > user.tempPasswordExpiry) {
         return res.status(400).json({ success: false, message: 'Temporary password has expired. Please contact admin.' });
@@ -346,7 +338,6 @@ const verifyEmail = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Verification token has expired' });
     }
 
-    // Mark user as active, record used token and clear verification fields
     user.isActive = true;
     user.verificationTokenUsed = token;
     user.verificationToken = null;
@@ -368,12 +359,11 @@ const requestPasswordReset = async (req, res, next) => {
 
     const user = await User.findOne({ email });
     if (!user) {
-      // don't reveal whether user exists
       return res.json({ success: true, message: 'If an account with that email exists, a reset link has been sent.' });
     }
 
     const resetToken = crypto.randomBytes(32).toString('hex');
-    const resetExpiry = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+    const resetExpiry = new Date(Date.now() + 60 * 60 * 1000);
 
     user.passwordResetToken = resetToken;
     user.passwordResetExpiry = resetExpiry;
