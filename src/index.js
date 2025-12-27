@@ -57,6 +57,20 @@ io.on('connection', (socket) => {
     console.log(`Socket ${socket.id} joined team ${teamId}`);
   });
 
+  socket.on('join-user', (userId) => {
+    if (!userId) return
+    const room = `user:${userId}`
+    socket.join(room)
+    console.log(`Socket ${socket.id} joined user room ${room}`)
+  })
+
+  socket.on('leave-user', (userId) => {
+    if (!userId) return
+    const room = `user:${userId}`
+    socket.leave(room)
+    console.log(`Socket ${socket.id} left user room ${room}`)
+  })
+
   socket.on('leave-team', (teamId) => {
     socket.leave(teamId);
     console.log(`Socket ${socket.id} left team ${teamId}`);

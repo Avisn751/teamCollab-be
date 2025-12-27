@@ -23,6 +23,11 @@ const getTasks = async (req, res, next) => {
       query.projectId = { $in: projectIds };
     }
 
+    // If the requester is a MEMBER, only return tasks assigned to them
+    if (req.user.role === 'MEMBER') {
+      query.assignedTo = req.user._id;
+    }
+
     const tasks = await Task.find(query)
       .populate('assignedTo', 'name email')
       .populate('projectId', 'name')
@@ -92,9 +97,9 @@ const createTask = async (req, res, next) => {
       io.to(teamId.toString()).emit('task:created', populatedTask);
     }
 
-    // Create notification if task is assigned
+    // Create notification and emit personal socket event if task is assigned
     if (assignedTo) {
-      await createNotification(
+      const notification = await createNotification(
         assignedTo,
         'task_assigned',
         'New Task Assigned',
@@ -102,6 +107,11 @@ const createTask = async (req, res, next) => {
         `/tasks?taskId=${task._id}`,
         { taskId: task._id, projectId }
       );
+
+      if (io && notification) {
+        // emit to a personal room; frontend should join `user:<userId>` room on connect
+        io.to(`user:${assignedTo}`).emit('notification:new', notification);
+      }
     }
 
     res.status(201).json({
@@ -148,9 +158,9 @@ const updateTask = async (req, res, next) => {
       io.to(teamId.toString()).emit('task:updated', populatedTask);
     }
 
-    // Create notification if assignment changed
+    // Create notification if assignment changed and emit personal socket event
     if (assignmentChanged && assignedTo) {
-      await createNotification(
+      const notification = await createNotification(
         assignedTo,
         'task_assigned',
         'Task Assigned to You',
@@ -158,9 +168,12 @@ const updateTask = async (req, res, next) => {
         `/tasks?taskId=${task._id}`,
         { taskId: task._id, projectId: task.projectId }
       );
+      if (io && notification) {
+        io.to(`user:${assignedTo}`).emit('notification:new', notification);
+      }
     } else if (assignmentChanged && !assignedTo && previousAssignedTo) {
       // Notify user if task was unassigned
-      await createNotification(
+      const notification = await createNotification(
         previousAssignedTo,
         'task_updated',
         'Task Unassigned',
@@ -168,6 +181,9 @@ const updateTask = async (req, res, next) => {
         `/tasks`,
         { taskId: task._id, projectId: task.projectId }
       );
+      if (io && notification) {
+        io.to(`user:${previousAssignedTo}`).emit('notification:new', notification);
+      }
     }
 
     res.json({
@@ -191,7 +207,12 @@ const deleteTask = async (req, res, next) => {
     }
 
     const teamId = req.user.teamId?._id || req.user.teamId;
-    
+
+    // Prevent MEMBERS from deleting tasks
+    if (req.user.role === 'MEMBER') {
+      return res.status(403).json({ success: false, message: 'Members are not allowed to delete tasks' });
+    }
+
     await Task.findByIdAndDelete(req.params.id);
 
     const io = req.app.get('io');

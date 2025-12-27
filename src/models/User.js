@@ -37,6 +37,15 @@ const userSchema = new mongoose.Schema({
   tempPasswordExpiry: {
     type: Date,
   },
+  passwordResetToken: {
+    type: String,
+  },
+  passwordResetExpiry: {
+    type: Date,
+  },
+  verificationTokenUsed: {
+    type: String,
+  },
   profileImage: {
     type: String,
     default: '',

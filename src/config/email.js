@@ -151,4 +151,57 @@ const verifyConnection = async () => {
   }
 };
 
-module.exports = { verifyConnection, sendInvitationEmail, sendVerificationEmail };
+const sendPasswordResetEmail = async (toEmail, resetToken) => {
+  const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/reset-password?token=${resetToken}`;
+
+  const emailData = {
+    sender: {
+      name: "TeamCollab",
+      email: process.env.SMTP_FROM
+    },
+    to: [{ email: toEmail }],
+    subject: 'Reset Your Password - TeamCollab',
+    htmlContent: `
+      <div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;padding:20px;">
+        <div style="background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);padding:30px;border-radius:12px;text-align:center;margin-bottom:20px;">
+          <h1 style="color:#fff;margin:0;font-size:28px;">🔒 Reset Your Password</h1>
+        </div>
+        <div style="background:#f8f9fa;padding:25px;border-radius:12px;margin-bottom:20px;">
+          <p style="font-size:14px;color:#666;margin:0 0 15px;">Click the button below to reset your password. This link will expire in one hour.</p>
+        </div>
+        <div style="text-align:center;margin:30px 0;">
+          <a href="${resetUrl}" 
+             style="display:inline-block;padding:14px 32px;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:#fff;text-decoration:none;border-radius:8px;font-weight:bold;font-size:16px;box-shadow:0 4px 15px rgba(102,126,234,0.4);">
+            Reset Password →
+          </a>
+        </div>
+        <div style="background:#f0f0f0;padding:15px;border-radius:8px;margin:20px 0;">
+          <p style="color:#666;margin:0;font-size:12px;text-align:center;">Or copy and paste this link in your browser:</p>
+          <p style="color:#667eea;margin:10px 0 0;font-size:12px;word-break:break-all;text-align:center;">${resetUrl}</p>
+        </div>
+        <p style="color:#6c757d;font-size:12px;text-align:center;margin-top:30px;">If you didn't request this, you can ignore this email.</p>
+      </div>
+    `
+  };
+
+  try {
+    const response = await axios.post(
+      'https://api.brevo.com/v3/smtp/email',
+      emailData,
+      {
+        headers: {
+          'accept': 'application/json',
+          'api-key': process.env.BREVO_API_KEY,
+          'content-type': 'application/json'
+        }
+      }
+    );
+    console.log('📧 Password reset email sent:', response.data.messageId);
+    return { success: true, messageId: response.data.messageId };
+  } catch (error) {
+    console.error('❌ Password reset email error:', error.response?.data || error.message);
+    return { success: false, error: error.response?.data || error.message };
+  }
+};
+
+module.exports = { verifyConnection, sendInvitationEmail, sendVerificationEmail, sendPasswordResetEmail };

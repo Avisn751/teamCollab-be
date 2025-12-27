@@ -1,7 +1,7 @@
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const { User, Team } = require('../models');
-const { sendVerificationEmail } = require('../config/email');
+const { sendVerificationEmail, sendPasswordResetEmail } = require('../config/email');
 
 const generateToken = (userId) => {
   return jwt.sign({ userId }, process.env.JWT_SECRET, { expiresIn: '7d' });
@@ -273,12 +273,30 @@ const changePassword = async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
     
-    // If user has a password set, verify current password
+    // Verify current password. Accept either the stored password (bcrypt) or a valid tempPassword.
+    let isMatch = false;
+
     if (user.password) {
-      const isMatch = await user.comparePassword(currentPassword);
-      if (!isMatch) {
-        return res.status(400).json({ success: false, message: 'Current password is incorrect' });
+      if (!currentPassword) {
+        return res.status(400).json({ success: false, message: 'Current password is required' });
       }
+
+      isMatch = await user.comparePassword(currentPassword);
+    }
+
+    // If not matched against hashed password, allow matching the plaintext tempPassword (if present and not expired)
+    if (!isMatch && user.tempPassword) {
+      if (user.tempPasswordExpiry && new Date() > user.tempPasswordExpiry) {
+        return res.status(400).json({ success: false, message: 'Temporary password has expired. Please contact admin.' });
+      }
+
+      if (currentPassword && currentPassword === user.tempPassword) {
+        isMatch = true;
+      }
+    }
+
+    if (!isMatch) {
+      return res.status(400).json({ success: false, message: 'Current password is incorrect' });
     }
     
     user.password = newPassword;
@@ -314,25 +332,88 @@ const verifyEmail = async (req, res, next) => {
     if (!token) {
       return res.status(400).json({ success: false, message: 'Verification token is required' });
     }
-
-    const user = await User.findOne({ verificationToken: token });
+    let user = await User.findOne({ verificationToken: token });
 
     if (!user) {
-      return res.status(400).json({ success: false, message: 'Invalid verification token' });
+      const used = await User.findOne({ verificationTokenUsed: token });
+      if (used && used.isActive) {
+      }
+
+      return res.status(400).json({ success: false, message: 'Invalid or expired verification token' });
     }
 
-    // Check if token has expired
     if (new Date() > user.verificationTokenExpiry) {
       return res.status(400).json({ success: false, message: 'Verification token has expired' });
     }
 
-    // Mark user as active and clear verification token
+    // Mark user as active, record used token and clear verification fields
     user.isActive = true;
+    user.verificationTokenUsed = token;
     user.verificationToken = null;
     user.verificationTokenExpiry = null;
     await user.save();
 
     res.json({ success: true, message: 'Email verified successfully' });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const requestPasswordReset = async (req, res, next) => {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ success: false, message: 'Email is required' });
+    }
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      // don't reveal whether user exists
+      return res.json({ success: true, message: 'If an account with that email exists, a reset link has been sent.' });
+    }
+
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const resetExpiry = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+    user.passwordResetToken = resetToken;
+    user.passwordResetExpiry = resetExpiry;
+    await user.save();
+
+    const emailResult = await sendPasswordResetEmail(email, resetToken);
+    if (!emailResult.success) {
+      console.error('Failed to send password reset email:', emailResult.error);
+    }
+
+    res.json({ success: true, message: 'If an account with that email exists, a reset link has been sent.' });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const resetPassword = async (req, res, next) => {
+  try {
+    const { token, newPassword } = req.body;
+    if (!token || !newPassword) {
+      return res.status(400).json({ success: false, message: 'Token and new password are required' });
+    }
+
+    const user = await User.findOne({ passwordResetToken: token });
+    if (!user) {
+      return res.status(400).json({ success: false, message: 'Invalid or expired password reset token' });
+    }
+
+    if (user.passwordResetExpiry && new Date() > user.passwordResetExpiry) {
+      return res.status(400).json({ success: false, message: 'Password reset token has expired' });
+    }
+
+    user.password = newPassword;
+    user.tempPassword = null;
+    user.tempPasswordExpiry = null;
+    user.passwordResetToken = null;
+    user.passwordResetExpiry = null;
+    await user.save();
+
+    res.json({ success: true, message: 'Password reset successfully' });
   } catch (error) {
     next(error);
   }
