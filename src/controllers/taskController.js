@@ -92,6 +92,18 @@ const createTask = async (req, res, next) => {
       io.to(teamId.toString()).emit('task:created', populatedTask);
     }
 
+    // Create notification if task is assigned
+    if (assignedTo) {
+      await createNotification(
+        assignedTo,
+        'task_assigned',
+        'New Task Assigned',
+        `You have been assigned to task: ${title}`,
+        `/tasks?taskId=${task._id}`,
+        { taskId: task._id, projectId }
+      );
+    }
+
     res.status(201).json({
       success: true,
       data: populatedTask,
@@ -113,6 +125,11 @@ const updateTask = async (req, res, next) => {
       });
     }
 
+    // Track if assignment changed
+    const previousAssignedTo = task.assignedTo?.toString();
+    const newAssignedTo = assignedTo?.toString();
+    const assignmentChanged = previousAssignedTo !== newAssignedTo;
+
     if (title !== undefined) task.title = title;
     if (description !== undefined) task.description = description;
     if (status !== undefined) task.status = status;
@@ -129,6 +146,28 @@ const updateTask = async (req, res, next) => {
     const io = req.app.get('io');
     if (io) {
       io.to(teamId.toString()).emit('task:updated', populatedTask);
+    }
+
+    // Create notification if assignment changed
+    if (assignmentChanged && assignedTo) {
+      await createNotification(
+        assignedTo,
+        'task_assigned',
+        'Task Assigned to You',
+        `You have been assigned to task: ${task.title}`,
+        `/tasks?taskId=${task._id}`,
+        { taskId: task._id, projectId: task.projectId }
+      );
+    } else if (assignmentChanged && !assignedTo && previousAssignedTo) {
+      // Notify user if task was unassigned
+      await createNotification(
+        previousAssignedTo,
+        'task_updated',
+        'Task Unassigned',
+        `You have been unassigned from task: ${task.title}`,
+        `/tasks`,
+        { taskId: task._id, projectId: task.projectId }
+      );
     }
 
     res.json({

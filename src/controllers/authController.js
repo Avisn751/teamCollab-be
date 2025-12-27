@@ -1,8 +1,14 @@
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const { User, Team } = require('../models');
+const { sendVerificationEmail } = require('../config/email');
 
 const generateToken = (userId) => {
   return jwt.sign({ userId }, process.env.JWT_SECRET, { expiresIn: '7d' });
+};
+
+const generateVerificationToken = () => {
+  return crypto.randomBytes(32).toString('hex');
 };
 
 const register = async (req, res, next) => {
@@ -22,6 +28,7 @@ const register = async (req, res, next) => {
       if (!user.firebaseUid) {
         user.firebaseUid = firebaseUid;
         if (name) user.name = name;
+        user.isActive = true;
         await user.save();
       }
       
@@ -39,6 +46,7 @@ const register = async (req, res, next) => {
             teamId: user.teamId,
             profileImage: user.profileImage,
             isInvitedUser: user.isInvitedUser,
+            isActive: user.isActive,
           },
           token,
         },
@@ -51,11 +59,18 @@ const register = async (req, res, next) => {
       adminId: null,
     });
 
+    // Generate verification token
+    const verificationToken = generateVerificationToken();
+    const verificationTokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+
     user = new User({
       email,
       name,
       role: 'ADMIN',
       firebaseUid,
+      isActive: false, // Email verification required
+      verificationToken,
+      verificationTokenExpiry,
     });
 
     await user.save();
@@ -65,6 +80,12 @@ const register = async (req, res, next) => {
     
     user.teamId = team._id;
     await user.save();
+
+    // Send verification email
+    const emailResult = await sendVerificationEmail(email, verificationToken);
+    if (!emailResult.success) {
+      console.error('Failed to send verification email:', emailResult.error);
+    }
 
     const token = generateToken(user._id);
 
@@ -79,9 +100,11 @@ const register = async (req, res, next) => {
           teamId: user.teamId,
           profileImage: user.profileImage,
           isInvitedUser: user.isInvitedUser,
+          isActive: user.isActive,
         },
         token,
       },
+      message: 'Registration successful. Please check your email to verify your account.',
     });
   } catch (error) {
     next(error);
@@ -122,6 +145,7 @@ const login = async (req, res, next) => {
             teamId: user.teamId,
             profileImage: user.profileImage,
             isInvitedUser: user.isInvitedUser,
+            isActive: user.isActive,
           },
           token,
         },
@@ -149,6 +173,7 @@ const login = async (req, res, next) => {
             teamId: user.teamId,
             profileImage: user.profileImage,
             isInvitedUser: user.isInvitedUser,
+            isActive: user.isActive,
           },
           token,
         },
@@ -167,6 +192,7 @@ const login = async (req, res, next) => {
       name: email.split('@')[0],
       role: 'ADMIN',
       firebaseUid,
+      isActive: true,
     });
 
     await user.save();
@@ -189,6 +215,7 @@ const login = async (req, res, next) => {
           teamId: user.teamId,
           profileImage: user.profileImage,
           isInvitedUser: user.isInvitedUser,
+          isActive: user.isActive,
         },
         token,
       },
@@ -211,6 +238,7 @@ const getMe = async (req, res, next) => {
         teamId: user.teamId,
         profileImage: user.profileImage,
         isInvitedUser: user.isInvitedUser,
+        isActive: user.isActive,
       },
     });
   } catch (error) {
@@ -279,4 +307,35 @@ const updateProfileImage = async (req, res, next) => {
   }
 };
 
-module.exports = { register, login, getMe, updateProfile, changePassword, updateProfileImage };
+const verifyEmail = async (req, res, next) => {
+  try {
+    const { token } = req.body;
+
+    if (!token) {
+      return res.status(400).json({ success: false, message: 'Verification token is required' });
+    }
+
+    const user = await User.findOne({ verificationToken: token });
+
+    if (!user) {
+      return res.status(400).json({ success: false, message: 'Invalid verification token' });
+    }
+
+    // Check if token has expired
+    if (new Date() > user.verificationTokenExpiry) {
+      return res.status(400).json({ success: false, message: 'Verification token has expired' });
+    }
+
+    // Mark user as active and clear verification token
+    user.isActive = true;
+    user.verificationToken = null;
+    user.verificationTokenExpiry = null;
+    await user.save();
+
+    res.json({ success: true, message: 'Email verified successfully' });
+  } catch (error) {
+    next(error);
+  }
+};
+
+module.exports = { register, login, getMe, updateProfile, changePassword, updateProfileImage, verifyEmail };

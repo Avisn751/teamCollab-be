@@ -17,6 +17,23 @@ const encryptEmail = (email) => {
   return iv.toString('hex') + ':' + encrypted;
 };
 
+const decryptEmail = (encryptedData) => {
+  try {
+    const algorithm = 'aes-256-cbc';
+    const key = crypto.scryptSync(process.env.JWT_SECRET || 'default-secret-key', 'salt', 32);
+    const parts = encryptedData.split(':');
+    const iv = Buffer.from(parts[0], 'hex');
+    const encrypted = parts[1];
+    const decipher = crypto.createDecipheriv(algorithm, key, iv);
+    let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+    decrypted += decipher.final('utf8');
+    return decrypted;
+  } catch (error) {
+    console.error('Decryption error:', error);
+    return null;
+  }
+};
+
 const getTeam = async (req, res, next) => {
   try {
     const teamId = req.user.teamId?._id || req.user.teamId;
@@ -131,6 +148,7 @@ const addTeamMember = async (req, res, next) => {
         tempPasswordExpiry: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
         isInvitedUser: true,
         invitedEmail: email,
+        isActive: false,
       });
       await user.save();
     }
