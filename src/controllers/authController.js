@@ -419,4 +419,4 @@ const resetPassword = async (req, res, next) => {
   }
 };
 
-module.exports = { register, login, getMe, updateProfile, changePassword, updateProfileImage, verifyEmail };
+module.exports = { register, login, getMe, updateProfile, changePassword, updateProfileImage, verifyEmail, requestPasswordReset, resetPassword };
