@@ -7,6 +7,16 @@ const generateTempPassword = () => {
   return crypto.randomBytes(4).toString('hex') + '@Temp1';
 };
 
+const encryptEmail = (email) => {
+  const algorithm = 'aes-256-cbc';
+  const key = crypto.scryptSync(process.env.JWT_SECRET || 'default-secret-key', 'salt', 32);
+  const iv = crypto.randomBytes(16);
+  const cipher = crypto.createCipheriv(algorithm, key, iv);
+  let encrypted = cipher.update(email, 'utf8', 'hex');
+  encrypted += cipher.final('hex');
+  return iv.toString('hex') + ':' + encrypted;
+};
+
 const getTeam = async (req, res, next) => {
   try {
     const teamId = req.user.teamId?._id || req.user.teamId;
@@ -116,27 +126,39 @@ const addTeamMember = async (req, res, next) => {
         role: role || 'MEMBER',
         teamId,
         firebaseUid: firebaseUser.uid,
+        password: tempPassword,
+        tempPassword: tempPassword,
+        tempPasswordExpiry: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        isInvitedUser: true,
+        invitedEmail: email,
       });
       await user.save();
     }
 
     if (isNewUser && tempPassword) {
+      const encryptedEmail = encryptEmail(email);
+      const loginUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/login?invite=${encodeURIComponent(encryptedEmail)}`;
+      
       const emailResult = await sendInvitationEmail(
         email,
         inviterName,
         team.name,
-        tempPassword
+        tempPassword,
+        loginUrl
       );
       
       if (!emailResult.success) {
         console.error('Failed to send invitation email:', emailResult.error);
       }
     } else if (!isNewUser) {
+      const loginUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/login`;
+      
       const emailResult = await sendInvitationEmail(
         email,
         inviterName,
         team.name,
-        'Use your existing password or Google Sign-in'
+        'Use your existing password or Google Sign-in',
+        loginUrl
       );
       
       if (!emailResult.success) {

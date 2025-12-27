@@ -1,4 +1,5 @@
 const { Task, Project } = require('../models');
+const { createNotification } = require('./notificationController');
 
 const getTasks = async (req, res, next) => {
   try {
